@@ -4,6 +4,7 @@ import mongoose from 'mongoose';
 import bodyParser from 'body-parser';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import { Server } from 'socket.io';
 
 dotenv.config({ path: 'variables.env' });
 
@@ -50,7 +51,17 @@ app.use('/api/bills', billsRoutes);
 app.use('/api/withdrawals', withDrawalsRoutes)
 
 // Start the server
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+// Create server and socket.io instance
+const server = app.listen(process.env.PORT || 5000, () => {
+  console.log(`Server is running on port ${process.env.PORT || 5000}`);
 });
+
+// Crear una instancia de Socket.IO
+const io = new Server(server, {
+  cors: {
+    origin: "*", // Asegúrate de ajustar la configuración de CORS si es necesario
+  }
+});
+
+// Exportamos `io` para que pueda ser utilizado en otros archivos
+export { io };

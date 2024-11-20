@@ -5,6 +5,7 @@ import Client from '../models/Client.js';
 import Loan from '../models/Loan.js'
 import authenticate from '../middleware/authenticate.js';
 import User from '../models/User.js';
+import { io } from '../index.js';
 
 // Get all clients
 router.get('/', authenticate, async (req, res) => {
@@ -37,6 +38,10 @@ router.post('/', authenticate, async (req, res) => {
     const { _id } = req.user.user;
     const client = new Client({...req.body, createdBy: _id });
     await client.save();
+
+    // Emitir evento a los clientes conectados cuando se añade un nuevo cliente
+    io.emit('clientUpdated', { message: 'Nuevo cliente agregado', client });
+
     res.status(201).json(client);
   } catch (error) {
     console.log(error.error);
@@ -49,10 +54,14 @@ router.delete('/:id', authenticate, async (req, res) => {
     await Loan.deleteMany({
       clientId: req.params.id
     });
+    const deletedClient = await Client.findOneAndDelete({ _id: req.params.id });
     
     await Client.findOneAndDelete({
       _id: req.params.id
     });
+
+    // Emitir evento a los clientes conectados cuando se elimina un cliente
+    io.emit('clientUpdated', { message: 'Cliente eliminado', client: deletedClient });
 
     res.json({
       msg: 'Cliente Eliminado correctamente'

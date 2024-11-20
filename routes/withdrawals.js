@@ -3,6 +3,7 @@ import express from 'express';
 import authenticate from '../middleware/authenticate.js';
 import Withdrawal from '../models/Withdrawal.js';
 import User from '../models/User.js';
+import { io } from '../index.js';
 
 
 const router = express.Router();
@@ -34,7 +35,10 @@ router.post('/', authenticate, async (req, res) => {
     try {
         const { _id } = req.user.user;
 
-        await Withdrawal.create({ ...req.body, createdBy: _id });
+        const newWithdrawal = await Withdrawal.create({ ...req.body, createdBy: _id });
+
+        // Emitir evento de WebSocket
+        io.emit('withdrawalUpdated', { message: 'Nuevo retiro agregado', withdrawal: newWithdrawal });
 
         res.json({
             msg: 'Retiro agregado correctamente!'
@@ -48,6 +52,9 @@ router.post('/', authenticate, async (req, res) => {
 router.delete('/:id', authenticate, async (req, res) => {
     try {
         const deletedWithdrawal = await Withdrawal.findOneAndDelete({ _id: req.params.id });
+
+        // Emitir evento de WebSocket
+        io.emit('withdrawalUpdated', { message: 'Retiro eliminado correctamente', withdrawal: deletedWithdrawal });
 
         res.json({
             msg: 'Retiro eliminado correctamente!',

@@ -5,6 +5,7 @@ import Payment from '../models/Payment.js';
 import Loan from '../models/Loan.js';
 import authenticate from '../middleware/authenticate.js';
 import User from '../models/User.js';
+import { io } from '../index.js';  // Importar la instancia de io correctamente
 
 // Get all payments
 router.get('/', authenticate, async (req, res) => {
@@ -39,6 +40,9 @@ router.delete('/:id', authenticate, async (req, res) => {
     // Actualizar balance
     const updatedLoan = await Loan.findOneAndUpdate({ _id: loanId }, { balance: loan.balance + deletedPayment.amount, terminated: false });
 
+    // Emitir evento de eliminación de pago
+    io.emit('paymentUpdated', { updatedLoan, message: 'Pago eliminado correctamente!' });
+
     res.json({
       msg: 'Pago eliminado correctamente',
       deletedPayment,
@@ -72,12 +76,19 @@ router.post('/', authenticate, async (req, res) => {
         terminated: true
       }).populate('clientId');
       //  Mandar respuesta al frontend
+
+      // Emitir evento con los datos actualizados
+      io.emit('paymentUpdated', { terminatedLoan, message: `El préstamo del cliente ${terminatedLoan.clientId.name} ha terminado.` });
+
       res.status(201).json({
         terminatedLoan,
         msg: `Felicidades, el usuario ${terminatedLoan?.clientId?.name || ''} ha culminado con su prestamo`
       });
       return;
     }
+
+    // Emitir evento con los datos actualizados
+    io.emit('paymentUpdated', { updatedLoan, message: 'Pago registrado con éxito!' });
 
     //  Mandar respuesta al frontend
     res.status(201).json({

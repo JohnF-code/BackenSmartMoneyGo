@@ -6,6 +6,7 @@ import authenticate from '../middleware/authenticate.js';
 import Clients from '../models/Client.js';
 import Payment from '../models/Payment.js';
 import User from '../models/User.js';
+import { io } from '../index.js';
 
 // Get all Loans
 router.get('/', authenticate, async (req, res) => {
@@ -67,6 +68,10 @@ router.post('/', authenticate, async (req, res) => {
     const { _id } = req.user.user;
     const loan = new Loan({...req.body, createdBy: _id });
     await loan.save();
+
+    // Emitir evento
+    io.emit('loanUpdated', { message: 'Préstamo creado correctamente', loan });
+
     res.status(201).json(loan);
   } catch (error) {
     console.log(error.error);
@@ -81,6 +86,11 @@ router.delete('/:id', authenticate, async (req, res) => {
 
     const deletedPayments = await Payment.deleteMany({ loanId: req.params.id });
     console.log(deletedPayments);
+    
+    // Emitir evento 
+    io.emit('loanUpdated', { message: 'Préstamo eliminado correctamente', deletedPayments });
+
+
     res.json({
       msg: 'Prestamo Eliminado correctamente',
       deletedPayments
@@ -147,6 +157,9 @@ router.put('/:id', async (req, res) => {
         balance: newBalance // Actualizamos el balance con el nuevo cálculo
       }
     );
+
+    // Emitir evento 
+    io.emit('loanUpdated', { message: 'Préstamo actualizado correctamente', updatedPrestamo });
 
     res.json({ message: 'Préstamo actualizado correctamente', updatedPrestamo });
 
