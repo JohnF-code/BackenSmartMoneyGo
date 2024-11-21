@@ -51,11 +51,15 @@ router.post('/', authenticate, async (req, res) => {
     }
 });
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> origin/master
 router.delete('/:id', authenticate, async (req, res) => {
     try {
         const deletedBill = await Bill.findOneAndDelete({ _id: req.params.id });
 
+<<<<<<< HEAD
         if (!deletedBill) {
             return res.status(404).json({ msg: 'Gasto no encontrado' });
         }
@@ -67,6 +71,12 @@ router.delete('/:id', authenticate, async (req, res) => {
             msg: 'Gasto eliminado correctamente!',
             deletedBill
         });
+=======
+        res.json({
+            msg: 'Gasto eliminado correctamente!',
+            deletedBill
+        })
+>>>>>>> origin/master
     } catch (error) {
         console.log(error);
         res.status(500).json(error);

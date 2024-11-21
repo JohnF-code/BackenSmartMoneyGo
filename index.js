@@ -51,6 +51,7 @@ app.use('/api/bills', billsRoutes);
 app.use('/api/withdrawals', withDrawalsRoutes)
 
 // Start the server
+<<<<<<< HEAD
 // Create server and socket.io instance
 const server = app.listen(process.env.PORT || 5000, () => {
   console.log(`Server is running on port ${process.env.PORT || 5000}`);
@@ -65,3 +66,9 @@ const io = new Server(server, {
 
 // Exportamos `io` para que pueda ser utilizado en otros archivos
 export { io };
+=======
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`);
+});
+>>>>>>> origin/master

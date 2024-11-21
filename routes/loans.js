@@ -140,7 +140,7 @@ router.put('/:id', async (req, res) => {
       newBalance = capitalConInteres - totalPayments; // Resta de los pagos ya realizados
 
       // Recalcular el valor de la cuota (installmentValue)
-      newInstallmentValue = loanAmount / installments;
+      newInstallmentValue = capitalConInteres / installments;
     }
 
     // Actualizar el préstamo con los nuevos valores
