@@ -21,7 +21,8 @@ app.use(cors());
 
 // Database connection
 mongoose.connect(process.env.MONGO_URI, {
-  useUnifiedTopology: true
+   useNewUrlParser: true,
+
 });
 
 // Check connection
