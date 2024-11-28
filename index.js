@@ -22,7 +22,6 @@ app.use(cors());
 // Database connection
 mongoose.connect(process.env.MONGO_URI, {
   useUnifiedTopology: true
-
 });
 
 // Check connection
