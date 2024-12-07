@@ -19,12 +19,28 @@ router.get('/', authenticate, async (req, res) => {
       return res.status(404).json({ message: 'Usuario no encontrado' });
     }
 
-    // Obtener los pagos que fueron creados por el usuario principal o cualquiera a los que tiene acceso
-  const payments = await Payment.find({
-    createdBy: { $in: user.accessTo }
-  }).populate('clientId').populate('loanId');
+    // Obtener el loanId si se proporciona en la consulta
+    const { loanId } = req.query;
 
-  res.json(payments);
+    // Validar que el loanId sea un ObjectId válido (24 caracteres hexadecimales)
+    if (loanId && !/^[0-9a-fA-F]{24}$/.test(loanId)) {
+      return res.status(400).json({ message: 'El loanId debe ser un ObjectId válido de 24 caracteres hexadecimales' });
+    }
+
+    // Filtrar los pagos que fueron creados por el usuario principal o cualquiera a los que tiene acceso
+    // Si se proporciona un loanId, filtrar también por él
+    const filter = {
+      createdBy: { $in: user.accessTo }
+    };
+
+    if (loanId) {
+      filter.loanId = loanId;  // Si loanId está presente, agregar al filtro
+    }
+
+    // Obtener los pagos que coinciden con el filtro
+    const payments = await Payment.find(filter).populate('clientId').populate('loanId');
+
+    res.json(payments);
 });
 
 // Delete Payment
