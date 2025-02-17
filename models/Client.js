@@ -9,6 +9,7 @@ const ClientSchema = new Schema({
   date: { type: Date },
   coordinates: { type: [Number], required: true },
   createdBy: { type: Schema.Types.ObjectId, ref: 'User' },
+  favorite: { type: Boolean, default: true }
 });
 
 ClientSchema.index({ name: 'text' });

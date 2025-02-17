@@ -1,0 +1,40 @@
+Listado de rutas de carpetas para el volumen OS
+El n�mero de serie del volumen es 8830-7E92
+C:.
+|   .env
+|   .gitignore
+|   index.js
+|   lista_directorio.txt
+|   package-lock.json
+|   package.json
+|   
++---.anima
+|       .gitignore
+|       
++---controllers
+|       financeController.js
+|       
++---middleware
+|       authenticate.js
+|       
++---models
+|       Bill.js
+|       Client.js
+|       Finance.js
+|       Loan.js
+|       Payment.js
+|       User.js
+|       Withdrawal.js
+|       
+|   
+|               
++---routes
+        auth.js
+        bills.js
+        clients.js
+        finances.js
+        loans.js
+        payment.js
+        users.js
+        withdrawals.js
+        

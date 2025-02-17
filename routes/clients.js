@@ -36,7 +36,7 @@ router.get('/', authenticate, async (req, res) => {
 router.post('/', authenticate, async (req, res) => {
   try {
     const { _id } = req.user.user;
-    const client = new Client({...req.body, createdBy: _id });
+    const client = new Client({...req.body, createdBy: _id, favorite: true });
     await client.save();
 
     // Emitir evento a los clientes conectados cuando se añade un nuevo cliente

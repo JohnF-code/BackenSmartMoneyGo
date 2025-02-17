@@ -1,121 +1,132 @@
 // routes/payments.js
 import express from 'express';
-const router = express.Router();
 import Payment from '../models/Payment.js';
 import Loan from '../models/Loan.js';
 import authenticate from '../middleware/authenticate.js';
 import User from '../models/User.js';
-import { io } from '../index.js';  // Importar la instancia de io correctamente
+import { io } from '../index.js'; // Importar la instancia de io correctamente
+import Clients from '../models/Client.js';
 
-// Get all payments
+const router = express.Router();
+
+// Obtener todos los pagos
 router.get('/', authenticate, async (req, res) => {
-   // Obtener id del usuario autenticado
-    const { _id } = req.user.user;
+  try {
+    const { _id } = req.user.user; // Obtener el id del usuario autenticado
 
-    // Buscar al usuario autenticado
+    // Buscar al usuario
     const user = await User.findById(_id);
-
     if (!user) {
       return res.status(404).json({ message: 'Usuario no encontrado' });
     }
 
-    // Obtener el loanId si se proporciona en la consulta
-    const { loanId } = req.query;
+    const { loanId } = req.query; // Obtener el loanId desde la consulta
 
-    // Validar que el loanId sea un ObjectId válido (24 caracteres hexadecimales)
+    // Validación de loanId
     if (loanId && !/^[0-9a-fA-F]{24}$/.test(loanId)) {
-      return res.status(400).json({ message: 'El loanId debe ser un ObjectId válido de 24 caracteres hexadecimales' });
+      return res.status(400).json({ message: 'loanId no es válido.' });
     }
 
-    // Filtrar los pagos que fueron creados por el usuario principal o cualquiera a los que tiene acceso
-    // Si se proporciona un loanId, filtrar también por él
-    const filter = {
-      createdBy: { $in: user.accessTo }
-    };
+    const filter = { createdBy: { $in: user.accessTo } }; // Filtrar por los pagos asociados al usuario
+    if (loanId) filter.loanId = loanId;
 
-    if (loanId) {
-      filter.loanId = loanId;  // Si loanId está presente, agregar al filtro
-    }
-
-    // Obtener los pagos que coinciden con el filtro
+    // Obtener pagos y asociar los detalles de los préstamos y clientes
     const payments = await Payment.find(filter).populate('clientId').populate('loanId');
-
-    res.json(payments);
-});
-
-// Delete Payment
-router.delete('/:id', authenticate, async (req, res) => {
-  try {
-    // Eliminar pago
-    const deletedPayment = await Payment.findOneAndDelete({ _id: req.params.id });
     
-    // Econtrar prestamo al que pertenece el pago
-    const { loanId } = deletedPayment;
-    const loan = await Loan.findOne({ _id: loanId });
+    // Verifica si se obtuvieron pagos
+    if (!payments.length) {
+      return res.status(204).send(); // No Content
+    }
 
-    // Actualizar balance
-    const updatedLoan = await Loan.findOneAndUpdate({ _id: loanId }, { balance: loan.balance + deletedPayment.amount, terminated: false });
-
-    // Emitir evento de eliminación de pago
-    io.emit('paymentUpdated', { updatedLoan, message: 'Pago eliminado correctamente!' });
-
-    res.json({
-      msg: 'Pago eliminado correctamente',
-      deletedPayment,
-      updatedLoan
-    })
+    res.status(200).json(payments); // Regresar los pagos
   } catch (error) {
-    console.log(error);
+    console.error('Error al obtener pagos:', error);
+    res.status(500).json({ message: 'Error al obtener pagos.' });
   }
 });
 
-// Add new payment
+// Registrar un nuevo pago
 router.post('/', authenticate, async (req, res) => {
   try {
     const { _id } = req.user.user;
-    const { balance, loanId, clientId } = req.body;
+    const { balance, loanId, clientId, amount } = req.body;
 
-    // Registrar pago
-    const payment = new Payment({...req.body, createdBy: _id});
-    await payment.save();
-
-    console.log(payment);
-
-    // Actualizar Cantidad
-    const updatedBalance = balance - payment.amount;
-
-    const updatedLoan = await Loan.findOneAndUpdate({ _id: loanId }, { balance: updatedBalance });
-
-    // Verificar si la deuda del cliente ya ha terminado
-    if (updatedBalance <= 1000) {
-      const terminatedLoan = await Loan.findOneAndUpdate({ _id: loanId, clientId }, {
-        terminated: true
-      }).populate('clientId');
-      //  Mandar respuesta al frontend
-
-      // Emitir evento con los datos actualizados
-      io.emit('paymentUpdated', { terminatedLoan, message: `El préstamo del cliente ${terminatedLoan.clientId.name} ha terminado.` });
-
-      res.status(201).json({
-        terminatedLoan,
-        msg: `Felicidades, el usuario ${terminatedLoan?.clientId?.name || ''} ha culminado con su prestamo`
-      });
-      return;
+    // Validar datos de la solicitud
+    if (!loanId || !clientId || !amount) {
+      return res.status(400).json({ message: "Datos incompletos para el pago." });
     }
 
-    // Emitir evento con los datos actualizados
-    io.emit('paymentUpdated', { updatedLoan, message: 'Pago registrado con éxito!' });
+    // Registrar pago
+    const payment = new Payment({ ...req.body, createdBy: _id });
+    await payment.save();
 
-    //  Mandar respuesta al frontend
-    res.status(201).json({
+    // Actualizar el balance del préstamo
+    const updatedBalance = balance - payment.amount;
+    const updatedLoan = await Loan.findByIdAndUpdate(
+      loanId,
+      { balance: updatedBalance, terminated: updatedBalance <= 1000 },
+      { new: true }
+    ).populate('clientId', 'name');
+
+    console.log(updatedLoan);
+    const { installmentValue } = updatedLoan;
+
+    // Coutas actuales = balance / installmentValue
+    // Cuotas restantes = totalCuotas - cuotasActuales
+    const cuotasActuales = updatedLoan.balance / updatedLoan.installmentValue;
+    const cuotasRestantes = updatedLoan.installments - cuotasActuales;
+
+    // Si le faltan 8 cuotas o menos, entonces añadir a favoritos
+    if(cuotasRestantes <= 8 ) {
+      await Clients.findOneAndUpdate( { _id: clientId }, { favorite: true } );
+    }
+
+    // Emitir el evento de actualización de pago usando Socket.IO
+    io.emit('paymentUpdated', {
       updatedLoan,
-      msg: 'Pago registrado con exito!'
+      message: updatedBalance <= 1000
+        ? `Préstamo del cliente ${updatedLoan.clientId.name} finalizado.`
+        : 'Pago registrado con éxito.'
+    });
+
+    res.status(201).json({
+      payment,
+      updatedLoan,
+      msg: 'Pago registrado con éxito!'
     });
   } catch (error) {
-    console.log(error);
+    console.error('Error al registrar el pago:', error);
+    res.status(500).json({ message: 'Error al registrar el pago.' });
   }
 });
 
-// Other routes for update and delete can be added here...
+// Eliminar un pago
+router.delete('/:id', authenticate, async (req, res) => {
+  try {
+    const payment = await Payment.findByIdAndDelete(req.params.id);
+    if (!payment) {
+      return res.status(404).json({ message: 'Pago no encontrado.' });
+    }
+
+    // Actualizar el balance del préstamo
+    const loan = await Loan.findById(payment.loanId);
+    if (loan) {
+      loan.balance += payment.amount;
+      loan.terminated = false;
+      await loan.save();
+    }
+
+    // Emitir evento de eliminación de pago usando Socket.IO
+    io.emit('paymentUpdated', {
+      loan,
+      message: 'Pago eliminado correctamente.'
+    });
+
+    res.status(200).json({ message: 'Pago eliminado correctamente.', payment, loan });
+  } catch (error) {
+    console.error('Error al eliminar el pago:', error);
+    res.status(500).json({ message: 'Error al eliminar el pago.' });
+  }
+});
 
 export default router;
