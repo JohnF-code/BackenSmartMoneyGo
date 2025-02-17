@@ -4,6 +4,7 @@ import authenticate from '../middleware/authenticate.js';
 import Bill from '../models/Bill.js';
 import User from '../models/User.js';
 import { io } from '../index.js';
+import Clients from '../models/Client.js';
 
 
 const router = express.Router();
@@ -33,8 +34,6 @@ router.get('/', authenticate, async (req, res) => {
 
 router.post('/', authenticate, async (req, res) => {
     try {
-        const { _id } = req.user.user;
-
         // Crear un nuevo gasto
         const newBill = await Bill.create({ ...req.body, createdBy: _id });
 
