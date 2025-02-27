@@ -1,5 +1,5 @@
-// JohnF-code Jajajaja
-// /routes/loans.js
+//JohnF-code JaJaJaJa
+// BackenSmartMoneyGo/routes/loans.js
 
 import express from 'express';
 import Loan from '../models/Loan.js';
@@ -8,22 +8,22 @@ import Clients from '../models/Client.js';
 import Payment from '../models/Payment.js';
 import User from '../models/User.js';
 import { io } from '../index.js';
-import { calculateEndDate } from '../helpers/finanzasHelpers.js';
+import { calculateEndDate, parseLocalDate, adjustToUTC } from '../helpers/finanzasHelpers.js';
 
 const router = express.Router();
 
-// GET all Loans (permite filtrar por ruta)
+// GET all Loans (filtrado por ruta)
 router.get('/', authenticate, async (req, res) => {
   try {
     const { _id } = req.user.user;
     const user = await User.findById(_id);
     if (!user) return res.status(404).json({ message: 'Usuario no encontrado' });
     
-    let query = { createdBy: { $in: user.accessTo } };
+    // Filtrar préstamos creados por el usuario actual o cuyos createdBy estén en user.accessTo
+    let query = { $or: [{ createdBy: _id }, { createdBy: { $in: user.accessTo } }] };
     if (req.query.ruta) {
       query.ruta = req.query.ruta;
     }
-    
     const loans = await Loan.find(query).populate('clientId').populate('ruta');
     res.json(loans);
   } catch (error) {
@@ -54,64 +54,80 @@ router.get('/:id', authenticate, async (req, res) => {
 router.post('/', authenticate, async (req, res) => {
   try {
     const { _id } = req.user.user;
-    const {
+    let {
       loanAmount,
       interest,
       installments,
-      date,
+      date, // Fecha de inicio en "YYYY-MM-DD"
       clientId,
       description,
       ruta,
       ubicarDespuesDe,
-      finishDate
+      finishDate,       // Opcional, enviado desde el frontend
+      installmentValue, // Opcional, enviado desde el frontend
+      usarValoresCalculados // Indica que se deben usar los valores calculados en el frontend
     } = req.body;
-
-    // Eliminar Cliente de Favoritos
+    
+    // Convertir a números
+    loanAmount = Number(loanAmount);
+    interest = Number(interest);
+    installments = Number(installments);
+    if (installmentValue) installmentValue = Number(installmentValue);
+    
+    // Actualizar cliente (quitar de favoritos)
     await Clients.findOneAndUpdate({ _id: clientId }, { favorite: false });
-
-    // Nuevo préstamo
+    
+    // Convertir la fecha de inicio a local
+    const localStartDate = parseLocalDate(date);
+    
     const newLoan = new Loan({
       createdBy: _id,
       clientId,
       loanAmount,
       interest,
       installments,
-      date,
+      date: localStartDate,
       description,
       ruta: ruta || null,
-      orden: 0 // valor temporal
+      orden: 0
     });
-
+    
+    // Determinar finishDate: usar el enviado o calcularlo
+    let finalFinishDate;
+    if (usarValoresCalculados && finishDate) {
+      finalFinishDate = parseLocalDate(finishDate);
+    } else {
+      const computedFinish = calculateEndDate(date, installments);
+      finalFinishDate = parseLocalDate(computedFinish);
+    }
+    newLoan.finishDate = finalFinishDate;
+    
+    // Calcular installmentValue: usar el enviado o recalcularlo
+    if (usarValoresCalculados && installmentValue) {
+      newLoan.installmentValue = installmentValue;
+    } else {
+      newLoan.installmentValue = (loanAmount * (1 + interest / 100)) / (installments || 1);
+    }
+    // Calcular el balance como: installmentValue * installments
+    newLoan.balance = newLoan.installmentValue * installments;
+    
+    // Reordenamiento
     let newOrder = 0;
     if (ubicarDespuesDe) {
-      // Ubicar después de un préstamo específico
       const prevLoan = await Loan.findById(ubicarDespuesDe);
       if (prevLoan) {
         newOrder = prevLoan.orden + 1;
-        // Actualizamos los préstamos en la misma ruta con orden >= newOrder
         await Loan.updateMany(
           { ruta: ruta, orden: { $gte: newOrder } },
           { $inc: { orden: 1 } }
         );
       }
     } else if (ruta) {
-      // Insertamos al final de la ruta si no se especifica 'ubicarDespuesDe'
       const lastLoan = await Loan.findOne({ ruta: ruta }).sort({ orden: -1 });
       newOrder = lastLoan ? lastLoan.orden + 1 : 0;
     }
     newLoan.orden = newOrder;
-
-    if (!finishDate) {
-      const finishStr = calculateEndDate(newLoan.date, installments);
-      newLoan.finishDate = new Date(finishStr);
-    } else {
-      newLoan.finishDate = finishDate;
-    }
-
-    const capitalConInteres = newLoan.loanAmount * (1 + newLoan.interest / 100);
-    newLoan.balance = capitalConInteres;
-    newLoan.installmentValue = capitalConInteres / (installments || 1);
-
+    
     await newLoan.save();
     io.emit('loanUpdated', { message: 'Préstamo creado correctamente', loan: newLoan });
     res.status(201).json(newLoan);
@@ -121,8 +137,7 @@ router.post('/', authenticate, async (req, res) => {
   }
 });
 
-// PUT => Reordenar préstamos (nuevo endpoint para drag & drop)
-// Se espera en el body: { loanOrder: [{ id: "loanId1", orden: newOrder1 }, ...] }
+// PUT => Reordenar préstamos
 router.put('/reorder', authenticate, async (req, res) => {
   try {
     const { loanOrder } = req.body;
@@ -167,13 +182,13 @@ router.put('/:id', authenticate, async (req, res) => {
       ruta,
       ubicarDespuesDe
     } = req.body;
-
+    
     const loan = await Loan.findById(id);
     if (!loan) return res.status(404).json({ message: 'Préstamo no encontrado' });
-
+    
     const payments = await Payment.find({ loanId: id });
     const totalPayments = payments.reduce((total, p) => total + p.amount, 0);
-
+    
     let newBalance = loan.balance;
     let newInstallmentValue = loan.installmentValue;
     if (
@@ -185,7 +200,7 @@ router.put('/:id', authenticate, async (req, res) => {
       newBalance = capitalConInteres - totalPayments;
       newInstallmentValue = capitalConInteres / (installments || 1);
     }
-
+    
     let newOrder;
     if (ruta && String(loan.ruta) !== String(ruta)) {
       await Loan.updateMany(
@@ -228,7 +243,7 @@ router.put('/:id', authenticate, async (req, res) => {
     } else {
       newOrder = loan.orden;
     }
-
+    
     loan.description = description;
     loan.loanAmount = loanAmount;
     loan.interest = interest;
@@ -238,15 +253,56 @@ router.put('/:id', authenticate, async (req, res) => {
     loan.ruta = ruta;
     loan.orden = newOrder;
     loan.installmentValue = newInstallmentValue;
-    loan.balance = newBalance;
-
+    // Actualizar el balance como installmentValue * installments
+    loan.balance = newInstallmentValue * installments;
+    
     const updatedPrestamo = await loan.save();
-
+    
     io.emit('loanUpdated', { message: 'Préstamo actualizado correctamente', updatedPrestamo });
     res.json({ message: 'Préstamo actualizado correctamente', updatedPrestamo });
   } catch (error) {
     console.log(error);
     res.status(500).send('Hubo un error');
+  }
+});
+
+/**
+ * POST => Registrar un pago para un préstamo.
+ * Este endpoint recibe el monto del pago (que puede ser editado por el usuario)
+ * y actualiza el saldo del préstamo en consecuencia, creando un nuevo registro en Payment.
+ */
+router.post('/:id/payment', authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+    let { amount } = req.body;
+    amount = Number(amount);
+    if (amount <= 0) {
+      return res.status(400).json({ message: 'El monto del pago debe ser mayor que cero' });
+    }
+    const loan = await Loan.findById(id);
+    if (!loan) return res.status(404).json({ message: 'Préstamo no encontrado' });
+    
+    // Actualizar el saldo usando el monto editado
+    loan.balance = loan.balance - amount;
+    if (loan.balance < 0) loan.balance = 0;
+    
+    // Crear un registro de pago
+    const newPayment = new Payment({
+      loanId: id,
+      amount,
+      date: new Date()
+    });
+    await newPayment.save();
+    
+    // Agregar el pago al arreglo de pagos del préstamo (si se mantiene esa referencia)
+    loan.pagos.push(newPayment);
+    
+    await loan.save();
+    io.emit('loanUpdated', { message: 'Pago registrado correctamente', loan });
+    res.status(200).json({ message: 'Pago registrado correctamente', loan, payment: newPayment });
+  } catch (error) {
+    console.log(error);
+    res.status(500).send('Hubo un error al registrar el pago');
   }
 });
 
