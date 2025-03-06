@@ -71,9 +71,14 @@ router.post('/register', async (req, res) => {
 });
 
 router.get('/profile', authenticate, (req, res) => {
+  try {
     const { user } = req.user;
     console.log({ user, token: req.user.token });
     res.json({ user, token: req.user.token });
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ message: 'Hubo un error al obtener perfil...' })
+  }
 })
 
 router.get('/', authenticate, async (req, res) => {

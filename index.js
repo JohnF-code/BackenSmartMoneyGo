@@ -44,6 +44,8 @@ import summaryRoutes from './routes/summary.js';
 import uploadRoutes from './routes/upload.js';
 import rutasRoutes from './routes/rutas.js';
 import estadisticasRoutes from './routes/estadisticas.js';
+import savingRoutes from './routes/saving.js';
+import correspondentRoutes from './routes/correspondents.js';
 
 // Usar rutas con prefijo "/api"
 app.use('/api/auth', authRoutes);
@@ -58,6 +60,8 @@ app.use('/api/summary', summaryRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/routes', rutasRoutes);
 app.use('/api/estadisticas', estadisticasRoutes);
+app.use('/api/savings', savingRoutes);
+app.use('/api/correspondents', correspondentRoutes);
 
 // Servir archivos estáticos desde la carpeta "uploads"
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));

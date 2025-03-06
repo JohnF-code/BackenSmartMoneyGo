@@ -1,5 +1,5 @@
-//JohnF-code JaJaJaJa
-// BackenSmartMoneyGo/routes/loans.js
+// JohnF-code Jajajaja
+// /BackenSmartMoneyGo/routes/loans.js
 
 import express from 'express';
 import Loan from '../models/Loan.js';
@@ -39,6 +39,7 @@ router.get('/:id', authenticate, async (req, res) => {
     const { _id } = req.user.user;
     const user = await User.findById(_id);
     if (!user) return res.status(404).json({ message: 'Usuario no encontrado' });
+    
     const loans = await Loan.find({
       clientId: id,
       createdBy: { $in: user.accessTo }
@@ -58,14 +59,14 @@ router.post('/', authenticate, async (req, res) => {
       loanAmount,
       interest,
       installments,
-      date, // Fecha de inicio en "YYYY-MM-DD"
+      date, // Se envía un string ISO que incluye fecha y hora
       clientId,
       description,
       ruta,
       ubicarDespuesDe,
       finishDate,       // Opcional, enviado desde el frontend
       installmentValue, // Opcional, enviado desde el frontend
-      usarValoresCalculados // Indica que se deben usar los valores calculados en el frontend
+      usarValoresCalculados
     } = req.body;
     
     // Convertir a números
@@ -77,8 +78,8 @@ router.post('/', authenticate, async (req, res) => {
     // Actualizar cliente (quitar de favoritos)
     await Clients.findOneAndUpdate({ _id: clientId }, { favorite: false });
     
-    // Convertir la fecha de inicio a local
-    const localStartDate = parseLocalDate(date);
+    // Usar new Date(date) para parsear la fecha completa (con hora)
+    const localStartDate = new Date(date);
     
     const newLoan = new Loan({
       createdBy: _id,
@@ -95,10 +96,10 @@ router.post('/', authenticate, async (req, res) => {
     // Determinar finishDate: usar el enviado o calcularlo
     let finalFinishDate;
     if (usarValoresCalculados && finishDate) {
-      finalFinishDate = parseLocalDate(finishDate);
+      finalFinishDate = new Date(finishDate);
     } else {
       const computedFinish = calculateEndDate(date, installments);
-      finalFinishDate = parseLocalDate(computedFinish);
+      finalFinishDate = new Date(computedFinish);
     }
     newLoan.finishDate = finalFinishDate;
     
@@ -253,7 +254,6 @@ router.put('/:id', authenticate, async (req, res) => {
     loan.ruta = ruta;
     loan.orden = newOrder;
     loan.installmentValue = newInstallmentValue;
-    // Actualizar el balance como installmentValue * installments
     loan.balance = newInstallmentValue * installments;
     
     const updatedPrestamo = await loan.save();
@@ -266,11 +266,7 @@ router.put('/:id', authenticate, async (req, res) => {
   }
 });
 
-/**
- * POST => Registrar un pago para un préstamo.
- * Este endpoint recibe el monto del pago (que puede ser editado por el usuario)
- * y actualiza el saldo del préstamo en consecuencia, creando un nuevo registro en Payment.
- */
+// POST => Registrar un pago para un préstamo.
 router.post('/:id/payment', authenticate, async (req, res) => {
   try {
     const { id } = req.params;
@@ -282,11 +278,9 @@ router.post('/:id/payment', authenticate, async (req, res) => {
     const loan = await Loan.findById(id);
     if (!loan) return res.status(404).json({ message: 'Préstamo no encontrado' });
     
-    // Actualizar el saldo usando el monto editado
     loan.balance = loan.balance - amount;
     if (loan.balance < 0) loan.balance = 0;
     
-    // Crear un registro de pago
     const newPayment = new Payment({
       loanId: id,
       amount,
@@ -294,7 +288,6 @@ router.post('/:id/payment', authenticate, async (req, res) => {
     });
     await newPayment.save();
     
-    // Agregar el pago al arreglo de pagos del préstamo (si se mantiene esa referencia)
     loan.pagos.push(newPayment);
     
     await loan.save();
